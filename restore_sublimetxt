@@ -1,0 +1,49 @@
+#!/bin/bash
+
+#Assign Arg to a variable fileName
+fileName=$1
+
+#Checking if file name is provided
+if [ $# -eq 0 ]; then
+    echo No file name provided
+    exit 1
+fi
+
+#Checking if file exists
+if [ ! -e $HOME/recyclebin/$fileName ]; then
+    echo File does not exist
+    exit 1
+fi
+
+#Getting info from .restore.info
+restoreInfo=$(grep -w $fileName $HOME/.restore.info)
+
+#Getting Original file path
+originalPath=$(echo $restoreInfo | cut -d":" -f2)
+
+#Getting directory of the file
+originalDir=$(echo $originalPath | rev | cut -d"/" -f2- | rev)
+
+#Creating Directory if it does not exist
+mkdir -p $originalDir
+
+if [ -e $originalPath ]; then
+    #If file already exists
+    echo "Do you want to overwrite? y/n"
+    read response
+    case $response in
+        #If yes, file will be overwritten
+        [yY]* ) mv $HOME/recyclebin/$fileName $originalPath;
+            grep -v $fileName $HOME/.restore.info > $HOME/.temp;
+            mv $HOME/.temp $HOME/.restore.info;;
+            * ) exit 1;;
+    esac
+
+#if file does not exist in target directory, it will be restored
+else
+mv $HOME/recyclebin/$fileName $originalPath
+
+#delete restored file name from .restore.info
+grep -v $fileName $HOME/.restore.info > $HOME/.temp
+mv $HOME/.temp $HOME/.restore.info
+fi
