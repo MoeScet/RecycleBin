@@ -1,0 +1,261 @@
+#!/bin/bash
+
+#Create function for getopts
+function getoptsFunction(){
+    i=false
+    v=false
+    r=false
+    no_opt=true
+    while getopts ivr opt
+    do
+    	case $opt in
+        	i) i=true;;
+        	v) v=true;;
+        	r) r=true;;
+          	*) $OPTARG;exit 1;;
+        esac
+        no_opt=false
+    done
+}
+ 
+#Error check function for v,i
+function checkError(){
+    filePath=$1
+    #Checking If File Exists
+    if [ ! -e $filePath ]; then
+         echo "recycle: cannot remove '$filePath' : No such file or directory"
+         continue
+    fi
+ 
+    #Checking If Arg Provided Was A Directory
+    if [ -d $filePath ]; then
+       	echo "replace: cannot remove '$filePath': Is a directory"
+       	continue
+    fi
+ 
+    #Extracting base name
+    fileName=$(echo $filePath | rev | cut -d'/' -f1 | rev)
+ 
+    #Checking If Filename Provided Was "recycle"
+    if [ $fileName = "recycle" ]; then
+       	echo Attempting to delete recycle - operation aborted
+       	exit 1
+    fi
+}
+ 
+ 
+#Error check function for r
+function checkErrorOptR(){
+	filePath=$1
+    #Checking If directory exists
+    if [ ! -d $filePath ]; then
+	    echo "recycle: cannot remove '$filePath' : No such file or directory"
+       	continue
+    fi
+}
+ 
+ 
+#Create a fucntion to perform phase1
+function deleteFile(){
+    #Assign Arg to a variable filePath
+    filePath=$1
+ 
+    #Extracting base name
+    fileName=$(echo $filePath | rev | cut -d'/' -f1 | rev)
+ 
+    #Assigning inode Of File To A Variable
+    inode_file=$(ls -i $filePath | cut -d' ' -f1)
+ 
+    #Rename File-To-Delete And Copy Into Recyclebin
+    recycleFileName="${fileName}_${inode_file}"
+ 
+    #Get absolute path of the file
+    recyclePath=$(readlink -f $filePath)
+ 
+    #Add Data To .restore.info
+    restoreData="${recycleFileName}:${recyclePath}"
+    echo $restoreData >> $HOME/.restore.info
+ 
+    #Deleting The File
+    mv $filePath $HOME/recyclebin/$recycleFileName
+}
+ 
+ 
+###MAIN###
+ 
+#Create Directory For Recycle Bin
+mkdir -p $HOME/recyclebin
+ 
+#Create Hidden File Containing Directories Of Files In Recyclebin
+hiddenFileName=.restore.info
+if [ ! -e $hiddenFileName ]; then
+	touch $HOME/$hiddenFileName
+fi
+ 
+getoptsFunction $*
+shift $(($OPTIND - 1))
+
+#Checking If Filename Is Provided
+if [ $# -eq 0 ]; then
+	echo "replace: missing operand"
+    exit 1
+fi
+
+#no option passed
+if $no_opt;then
+	for file in $@
+    do
+    	checkError $file
+       	deleteFile $file
+    done
+fi
+
+#option 'rvi'
+if $r && $v && $i; then
+    for dir in $@
+    do
+	    #if it is a directory, excute this block
+	    if [ -d $dir ]; then
+        	checkErrorOptR $dir
+        	for file in $(find $dir -type f)
+            do
+            	checkError $file
+              	read -p "Do you want to delete $file? y/n " response
+              	case $response in
+                 	[yY]* ) deleteFile $file;echo "$file removed.";;
+                        * ) continue;;
+              	esac
+            done
+        	rm -r $dir
+        	echo "Directory $dir removed."
+      	#if it is a file, execute this block
+      	elif [ -f $dir ]; then
+        	checkError $dir
+        	read -p "Do you want to delete $dir? y/n " response
+        	case $response in
+            	[yY]* ) deleteFile $dir;echo "$dir removed";;
+                	* ) continue;;
+        	esac
+      	fi
+    done
+    exit 1
+ fi
+
+#option 'iv' or  'vi'
+if $i && $v; then
+	for file in $@
+    do
+        checkError $file
+        read -p "Do you want to delete $file? y/n " response
+        case $response in
+            [yY]* ) deleteFile $file;echo "$file removed.";;
+                * ) continue;;
+        esac
+    done
+    exit 1
+ fi
+
+#option 'ir' or 'ri'
+if $i && $r; then
+    for dir in $@
+    do
+    #if it is a directory, excute this block
+    if [ -d $dir ]; then
+        checkErrorOptR $dir
+        for file in $(find $dir -type f)
+    	do
+            checkError $file
+            read -p "Do you want to delete $file? y/n " response
+            case $response in
+                [yY]* ) deleteFile $file;;
+                    * ) continue;;
+            esac
+        done
+        rm -r $dir
+        echo "Directory $dir removed."
+    #if it is a file, execute this block
+    elif [ -f $dir ]; then
+        checkError $dir
+        read -p "Do you want to delete $dir? y/n " response
+        case $response in
+            [yY]* ) deleteFile $dir;;
+                * ) continue;;
+        esac
+    fi
+    done
+    exit 1
+ fi
+
+#option 'vr' or 'rv'
+if $v && $r; then
+    for dir in $@
+    do
+	    #if it is a directory
+    	if [ -d $dir ]; then
+        	checkErrorOptR $dir
+        	for file in $(find $dir -type f)
+            do
+            	checkError $file
+              	deleteFile $file
+              	echo "$file removed."
+            done
+       		rm -r $dir
+        	echo "Directory $dir removed."
+      	#if it is a file
+      	elif [ -f $dir ]; then
+        	checkError $dir
+        	deleteFile $dir
+        	echo "$dir removed."
+      	fi
+    done
+    exit 1
+fi
+
+#option 'i'
+if $i; then
+    for file in $@
+    do
+        checkError $file
+        read -p "Do you want to delete $file? y/n " response
+        case $response in
+            [yY]* ) deleteFile $file;;
+                * ) continue;;
+        esac
+    done
+    exit 1
+fi
+
+#option 'v'
+if $v; then
+    for file in $@
+    do
+	    checkError $file
+        deleteFile $file
+        echo "$file removed."
+    done
+    exit 1
+fi
+
+#option 'r'
+if $r; then
+    for dir in $@
+    do
+	    #if it is a directory
+    	if [ -d $dir ]; then
+        	checkErrorOptR $dir
+        	for file in $(find $dir -type f)
+            do
+            	checkError $file
+              	deleteFile $file
+            done
+        	rm -r $dir
+        	echo "Directory $dir removed."
+     
+     	#if it is a file
+        elif [ -f $dir ]; then
+        	checkError $dir
+        	deleteFile $dir
+        fi
+    done
+    exit 1
+ fi
